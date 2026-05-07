@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "sitescan"
+version = "0.1.0"
+description = "Aerial imagery analysis for archaeological site detection"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.11",
+    "torchvision>=0.20",
+    "torchgeo>=0.6.2",
+    "segmentation-models-pytorch>=0.5.0",
+    "lightning>=2.6",
+    "torchmetrics>=1.9",
+    "rasterio>=1.4",
+    "albumentations>=2.0",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "tqdm>=4.66",
+    "shapely>=2.0",
+    "geopandas>=0.14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter",
+    "ipykernel",
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+sitescan-train = "src.train:main"
+sitescan-predict = "src.predict:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
