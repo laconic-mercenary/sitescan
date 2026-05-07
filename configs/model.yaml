@@ -1,0 +1,149 @@
+# =============================================================================
+# MODEL CONFIGURATION
+# =============================================================================
+# This file controls the shape and starting knowledge of the neural network.
+# You do not need to touch the Python code to change the model — edit here.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# ARCHITECTURE
+# The overall "blueprint" of the network — how it is structured.
+#
+# UNet is a U-shaped network designed specifically for image segmentation.
+# It works in two stages:
+#   1. ENCODER: reads the image and compresses it into an abstract summary
+#      (like reading a paragraph and distilling it to key ideas)
+#   2. DECODER: takes that summary and expands it back to full image size,
+#      now labelling every pixel (like re-writing the paragraph highlighting
+#      the important sentences)
+#
+# The "U" shape comes from skip connections — the encoder passes detailed
+# information directly to the decoder at each scale, so fine spatial detail
+# (like the exact edge of a stress pattern) is not lost during compression.
+# -----------------------------------------------------------------------------
+architecture: unet
+
+
+# -----------------------------------------------------------------------------
+# ENCODER
+# The "reader" half of the UNet — extracts features from the input image.
+#
+# Rather than training this from zero, we use DINOv2: a model Meta trained
+# on 142 million images using self-supervised learning. It already understands
+# textures, edges, colour gradients, and spatial patterns. We inherit all of
+# that knowledge and fine-tune it for our specific task.
+#
+# Think of it like hiring an experienced photo analyst and teaching them
+# archaeology-specific patterns, rather than training someone from scratch.
+#
+# "tu-" prefix means the encoder is loaded via the "timm" model library.
+# "dinov2_base" is the medium-sized version — good balance of accuracy vs
+# GPU memory. "dinov2_large" is more powerful but needs more memory.
+#
+# Lighter alternative if GPU memory is limited:
+#   encoder: resnet50
+#   encoder_weights: imagenet
+# -----------------------------------------------------------------------------
+encoder: tu-dinov2_base
+
+
+# -----------------------------------------------------------------------------
+# ENCODER WEIGHTS
+# Whether the encoder starts with pre-learned knowledge or random values.
+#
+# null here means DINOv2 loads its own pretrained weights automatically
+# (they are built into the timm library). This is different from ImageNet
+# models where you explicitly request "imagenet" weights.
+#
+# Starting with pretrained weights is almost always better than random —
+# especially when labelled training data is scarce, which it is here.
+# -----------------------------------------------------------------------------
+encoder_weights: null
+
+
+# -----------------------------------------------------------------------------
+# INPUT CHANNELS
+# How many separate "layers" of information are stacked as input.
+#
+# Like a multi-band raster in GIS — each channel is one layer.
+# We stack multiple Sentinel-2 composites and derived indices so the model
+# can learn which combination of time periods and spectral signals best
+# reveals buried structures.
+#
+# Our 11 channels:
+#   Dry season composite (May–Oct):
+#     [0] Red   (B04) — vegetation reflects less red when stressed
+#     [1] Green (B03)
+#     [2] Blue  (B02)
+#     [3] NIR   (B08) — near-infrared, strongest vegetation health signal
+#     [4] NDVI  = (NIR - Red) / (NIR + Red) — standard vegetation health index
+#
+#   Wet season composite (Nov–Apr):
+#     [5] Red   (B04) — baseline when all vegetation is lush
+#     [6] Green (B03)
+#     [7] Blue  (B02)
+#     [8] NIR   (B08)
+#     [9] NDVI  = (NIR - Red) / (NIR + Red)
+#
+#   Temporal difference:
+#    [10] NDVI anomaly = dry NDVI − wet NDVI
+#         Healthy vegetation recovers fully in the wet season.
+#         Vegetation stressed by buried structures does not.
+#         This channel highlights patches of *persistent* stress — the
+#         strongest single indicator of structural interference.
+#
+# Reducing channels:
+#   Set to 4 for dry-season RGBI only (faster, less data required)
+#   Set to 3 for RGB only (if NIR unavailable)
+# -----------------------------------------------------------------------------
+in_channels: 11
+
+
+# -----------------------------------------------------------------------------
+# NUMBER OF OUTPUT CLASSES
+# How many different labels the model can assign to each pixel.
+#
+# 1 = binary segmentation: each pixel gets a single probability score
+# between 0.0 (definitely background) and 1.0 (definitely a structure).
+# A threshold (typically 0.5) converts this to a yes/no map.
+#
+# If you later want to distinguish structure *types* (wall vs mound vs
+# causeway), increase this number and update the loss function accordingly.
+# -----------------------------------------------------------------------------
+num_classes: 1
+
+
+# -----------------------------------------------------------------------------
+# DECODER CHANNELS
+# The size (width) of each layer in the decoder as it expands back to full
+# image resolution. Read left to right: starts wide (most detail), narrows
+# as it approaches the final prediction.
+#
+# These numbers control model capacity — how much the decoder can "remember"
+# as it reconstructs the segmentation map. Larger numbers = more expressive
+# but slower to train and more likely to overfit on small datasets.
+#
+# Overfitting is the ML equivalent of a system over-tuned to one environment
+# that breaks in production — it memorises training examples rather than
+# learning general patterns.
+#
+# The defaults here are conservative, appropriate for limited training data.
+# -----------------------------------------------------------------------------
+decoder_channels: [256, 128, 64, 32, 16]
+
+
+# -----------------------------------------------------------------------------
+# ACTIVATION
+# A mathematical function applied to the model's raw output to squash it
+# into a usable range.
+#
+# null means we output raw "logit" values (unbounded numbers, e.g. -4.2 or
+# 7.8). The sigmoid function that converts these to [0, 1] probabilities is
+# applied inside the loss function during training, which is numerically
+# more stable than applying it here.
+#
+# At inference time (predict.py) we apply sigmoid explicitly to get the
+# 0–1 probability map that gets saved as the output GeoTIFF.
+# -----------------------------------------------------------------------------
+activation: null

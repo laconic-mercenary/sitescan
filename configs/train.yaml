@@ -1,0 +1,154 @@
+# =============================================================================
+# TRAINING CONFIGURATION
+# =============================================================================
+# Controls how the model learns — the speed, duration, and conditions of
+# the training process. None of this requires touching Python code to change.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# DATA
+# Where to find the prepared tiles and how to load them.
+# -----------------------------------------------------------------------------
+data:
+  tile_dir: data/tiles
+  annotation_dir: data/annotations
+
+  # Size of each square patch fed to the model, in pixels.
+  # Larger tiles give the model more spatial context — important here because
+  # the signal is geometric (linear/rectangular patterns), not just spectral.
+  # A 512×512 tile at 10m resolution covers a 5.12 × 5.12 km area — enough
+  # to see a full enclosure or causeway in context.
+  # Trade-off: larger tiles need more GPU memory. Halve to 256 if you run
+  # out of memory.
+  tile_size: 512
+
+  # How much adjacent tiles overlap when chipping the source imagery.
+  # Overlap ensures features near tile edges appear fully in at least one tile
+  # and are not cut in half. 128px overlap on a 512px tile = 25% overlap.
+  overlap: 128
+
+  # Fraction of tiles held back for validation (measuring performance during
+  # training) and testing (final honest evaluation after training is complete).
+  # The model never trains on val or test tiles — they are the "unseen data"
+  # that tells you whether the model generalises or has just memorised.
+  val_split: 0.15
+  test_split: 0.05
+
+  # How many CPU workers load tiles in parallel while the GPU trains.
+  # Think of this as the number of threads pre-fetching data into a buffer.
+  # Set to 0 if you hit errors on Windows (Windows has restrictions on
+  # multi-process data loading).
+  num_workers: 4
+
+
+# -----------------------------------------------------------------------------
+# TRAINING LOOP
+# Controls the duration and behaviour of the learning process.
+# -----------------------------------------------------------------------------
+training:
+  # How many tiles the model sees at once before updating its weights.
+  # Analogy: processing a micro-batch in a stream pipeline before committing.
+  # Larger batches = more stable weight updates but more GPU memory required.
+  # Smaller batches = noisier updates but can act as a regulariser (prevents
+  # the model from over-fitting to specific examples).
+  batch_size: 8
+
+  # Maximum number of full passes through the training data.
+  # One epoch = the model has seen every training tile once.
+  # Early stopping (below) will halt training before this if the model
+  # stops improving, so this is a ceiling not a target.
+  max_epochs: 100
+
+  # How fast the model adjusts its weights in response to errors.
+  # Too high: weights overshoot and the model never converges (diverges).
+  # Too low: training takes forever or gets stuck in a local minimum.
+  # 3e-4 (0.0003) is a well-established default for the AdamW optimiser.
+  learning_rate: 3.0e-4
+
+  # A small penalty added to large weight values to discourage the model
+  # from becoming overly complex. Helps prevent overfitting.
+  # Analogy: a regularisation term in a control system that penalises extreme
+  # actuator values to keep the system well-behaved.
+  weight_decay: 1.0e-4
+
+  # Stop training early if validation IoU does not improve for this many
+  # consecutive epochs. Prevents wasted compute and overfitting.
+  # If training stalls at epoch 30 and doesn't improve by epoch 45,
+  # training stops automatically.
+  early_stop_patience: 15
+
+  # Buried structures occupy a tiny fraction of each tile — maybe 1–3%.
+  # Without correction, the model learns "always predict background" and
+  # achieves 97% pixel accuracy while being completely useless.
+  # pos_weight multiplies the loss on positive (structure) pixels, forcing
+  # the model to take them seriously. 8.0 means a missed structure pixel
+  # is penalised 8× more than a missed background pixel.
+  # Tune this up if the model produces too many false negatives (misses),
+  # down if it produces too many false positives (false alarms).
+  pos_weight: 8.0
+
+  # Random seed — fixes the shuffle order of tiles into train/val/test splits
+  # so results are reproducible. Same seed = same splits every run.
+  # Change this to verify your results hold across different splits.
+  seed: 42
+
+
+# -----------------------------------------------------------------------------
+# LOSS FUNCTION
+# The mathematical signal that tells the model how wrong it is after each
+# batch. The model adjusts its weights to minimise this signal over time.
+#
+# We combine two complementary loss functions:
+#
+# BCE (Binary Cross-Entropy): penalises each pixel independently.
+#   Good at getting overall pixel accuracy right.
+#
+# Dice Loss: measures the overlap between predicted and actual masks as a
+#   fraction. Specifically designed for segmentation with class imbalance —
+#   it cares about getting the positive (structure) region right, not just
+#   overall pixel accuracy.
+#
+# Using both together gives you the pixel-level precision of BCE and the
+# region-level sensitivity of Dice. Weights below control their balance.
+# -----------------------------------------------------------------------------
+loss:
+  dice_weight: 0.5
+  bce_weight: 0.5
+
+
+# -----------------------------------------------------------------------------
+# OPTIMISER
+# The algorithm that adjusts the model's weights to reduce the loss.
+# We use AdamW with a cosine learning rate schedule.
+#
+# Warmup: for the first few epochs, the learning rate starts very small and
+# ramps up gradually. This prevents large early weight updates from sending
+# the freshly-loaded DINOv2 encoder in the wrong direction before it has
+# seen any of our data.
+#
+# Cosine decay: after warmup, the learning rate follows a cosine curve down
+# toward zero by the end of training — fast progress early, fine adjustments
+# later. Standard practice for vision models.
+# -----------------------------------------------------------------------------
+optimizer:
+  warmup_epochs: 5
+
+
+# -----------------------------------------------------------------------------
+# CHECKPOINTING
+# Saving snapshots of the model during training so the best version is
+# preserved even if training later degrades (overfitting) or crashes.
+#
+# monitor: the metric used to decide which checkpoint is "best"
+# IoU (Intersection over Union) measures how much the predicted structure
+# region overlaps the true structure region. 0 = no overlap, 1 = perfect.
+# It is the standard metric for segmentation tasks.
+#
+# save_top_k: keep only the 3 best checkpoints to save disk space.
+# -----------------------------------------------------------------------------
+checkpoint:
+  dirpath: checkpoints/
+  monitor: val/iou
+  mode: max        # higher IoU is better
+  save_top_k: 3
