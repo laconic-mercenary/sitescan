@@ -1,27 +1,29 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "sitescan"
 version = "0.1.0"
 description = "Aerial imagery analysis for archaeological site detection"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
-    "torch>=2.11",
-    "torchvision>=0.20",
+    "torch>=2.2,<2.3",
+    "torchvision>=0.17,<0.18",
     "torchgeo>=0.6.2",
     "segmentation-models-pytorch>=0.5.0",
     "lightning>=2.6",
     "torchmetrics>=1.9",
-    "rasterio>=1.4",
+    "rasterio>=1.4,<1.5",
     "albumentations>=2.0",
-    "numpy>=1.26",
+    "numpy>=1.26,<2",
+    "opencv-python-headless<4.12",
     "pyyaml>=6.0",
     "matplotlib>=3.8",
     "tqdm>=4.66",
     "shapely>=2.0",
     "geopandas>=0.14",
+    "earthengine-api>=1.5",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +37,10 @@ dev = [
 [project.scripts]
 sitescan-train = "src.train:main"
 sitescan-predict = "src.predict:main"
+sitescan-extract-fazenda-labels = "src.cli.extract_fazenda_labels:main"
+sitescan-rasterize-labels = "src.cli.rasterize_labels:main"
+sitescan-prepare-tiles = "src.cli.prepare_tiles:main"
+sitescan-evaluate-mask = "src.cli.evaluate_mask:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
