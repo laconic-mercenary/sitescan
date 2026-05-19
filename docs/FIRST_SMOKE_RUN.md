@@ -127,3 +127,18 @@ ruff: all checks passed
 pytest: 7 passed
 ```
 
+## Lessons For The Next Pass
+
+- The exported raster contained many NaN pixels from masked imagery. The training and
+  prediction loaders now sanitize NaNs, but preprocessing should write cleaned tiles or
+  record nodata masks explicitly.
+- The first AOI was only `451 x 492` pixels, smaller than the default `512 x 512` tile.
+  Either export a larger area or use `256` pixel tiles for single-site experiments.
+- The first label mask was generated from candidate KML linework, not a visually reviewed
+  ground-truth subset. Inspect the vectors/mask in QGIS before trusting metrics.
+- The one-epoch smoke model was intentionally weak. Its output confirmed the code path,
+  not archaeological usefulness.
+- On this Intel Mac mini, `num_workers=0` avoids PyTorch shared-memory restrictions in
+  the local execution sandbox.
+- Python 3.12 is required for the ML environment here. Python 3.14 could run data-prep
+  pieces but did not have compatible PyTorch wheels.

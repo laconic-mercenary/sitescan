@@ -324,41 +324,75 @@ current task explicitly asks for it.
 - A web UI.
 - Claims of archaeological validity beyond measured model outputs.
 
-## First Pass TODOs
+## First Pass Status
 
-Fill these in before starting a long implementation run:
+Complete. The first pass produced a real Fazenda Colorada vertical slice:
 
-- Primary milestone:
-  - 1. Using Fazenda Colorada as the known archaeological site, create a reproducible
-    imagery-plus-label workflow and verify that the known structures can be located in
-    the exported historical/satellite imagery.
-  - 2. Train a first-pass model on that single-site dataset, mainly to validate the full
-    pipeline.
-  - 3. Run inference on nearby imagery from the same Acre geoglyph region and produce
-    candidate probability maps for human review. This is exploratory only.
-- Available data:
-  - Vector source: Mendeley "Amazon Geoglyphs", DOI `10.17632/5ynjwk7gc7.1`.
-  - First site: Fazenda Colorada, Acre, Brazil.
-  - Imagery source: Google Earth Engine Sentinel-2 `COPERNICUS/S2_SR_HARMONIZED`.
-  - Optional historical context: Landsat Collection 2 Surface Reflectance.
-  - Local paths are still TODO until data is downloaded/exported.
-- Compute environment:
-  - local environment, unless unable to do so 
-  - 2018 MacMini 6 core INTEL (no apple silicon)
-  - Intel UHD Graphics 630 1536 MB
-  - 32 GB 2667 MHz DDR4
-  - Python must be `>=3.10,<3.14` for PyTorch wheel support. The existing local `venv`
-    was created with Python 3.14.5, which is usable for data prep but not for training.
-- Must-not-touch areas:
-  - anything outside this repo
-- Acceptance criteria:
-  - `ruff check .`
-  - `pytest`
-  - A command exists to import or convert source vectors into a mask for Fazenda Colorada.
-  - A command exists to chip aligned imagery and masks into tiles.
-  - A train command runs on the prepared single-site dataset or on synthetic fixtures if
-    real data export is blocked.
-  - A predict command writes a georeferenced probability GeoTIFF.
+- Earth Engine Sentinel-2/terrain export succeeded.
+- Local 13-channel GeoTIFF was downloaded and inspected.
+- Fazenda Colorada KML linework was extracted to GeoJSON.
+- Binary labels were rasterized against the exported GeoTIFF.
+- Image/mask tiles were prepared.
+- A small CPU smoke model trained for one epoch.
+- Prediction wrote a georeferenced probability GeoTIFF.
+- Evaluation wrote a threshold-sweep JSON report.
+- `ruff` and `pytest` passed in `.venv312`.
+
+See `docs/FIRST_SMOKE_RUN.md`.
+
+## Next Pass TODOs
+
+Primary milestone: turn the smoke slice into a meaningful first experiment.
+
+1. Validate labels visually.
+   - Load the source raster, candidate vectors, and rasterized mask in QGIS.
+   - Decide which Fazenda Colorada linework should count as positive class.
+   - Remove duplicate or low-confidence features from the label source.
+   - Decide whether point labels should be excluded, buffered, or used only for inspection.
+
+2. Expand the dataset around Fazenda Colorada.
+   - Rerun the Earth Engine export with a larger buffer so default `512 x 512` tiles fit.
+   - Include more negative/background context.
+   - Preserve the same 13-channel contract.
+   - Record the new export task and local products in `docs/DATA_SOURCES.md`.
+
+3. Improve preprocessing.
+   - Replace NaNs from cloud/no-data masks deliberately before tiling, not only at dataset load.
+   - Add a tile quality filter for nodata-heavy chips.
+   - Add image normalization metadata or a simple per-channel normalization strategy.
+
+4. Create a first experiment config.
+   - Keep `configs/model_smoke.yaml` for plumbing checks only.
+   - Add an experiment config suitable for CPU-limited training, probably `resnet18` or
+     `resnet34` without pretrained weights at first.
+   - Defer DINOv2 until the data/label path is visually trusted and a stronger machine is
+     available.
+
+5. Run a real small experiment.
+   - Train for more than one epoch.
+   - Save metrics and threshold sweep.
+   - Compare prediction overlay against known Fazenda Colorada structures in QGIS.
+
+Environment:
+
+- Use `.venv312` for all Python/ML work.
+- The old `venv` uses Python 3.14 and is not suitable for PyTorch training.
+- Local hardware is a 2018 Intel Mac mini CPU, so prefer small model/config experiments.
+
+Must-not-touch areas:
+
+- Anything outside this repo, except local tool installation and downloaded data explicitly
+  approved by the user.
+
+Acceptance criteria for the next pass:
+
+- `ruff check .`
+- `pytest`
+- A larger Fazenda Colorada export exists or a clear blocker is documented.
+- Label source has an explicit reviewed/accepted subset.
+- Prepared tiles include both positive and negative/context tiles.
+- A multi-epoch CPU experiment runs without NaN loss.
+- Prediction and evaluation outputs are documented.
 
 ## Autonomous Worker Instructions
 

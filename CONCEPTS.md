@@ -406,6 +406,74 @@ training data exists.
 
 ---
 
+## 18. What the first smoke run did
+
+The first implementation pass used **Fazenda Colorada**, a known geoglyph site in Acre,
+Brazil, as a real end-to-end test case. The point was not to produce a useful
+archaeological model yet. The point was to prove that the data pipeline can move from
+public geospatial sources to model output without breaking georeferencing.
+
+The workflow:
+
+1. **Export imagery from Earth Engine**
+   - Source: Sentinel-2 surface reflectance plus Copernicus DEM.
+   - Output: a 13-channel GeoTIFF in `EPSG:32719`.
+   - Channels: dry RGB/NIR/NDRE, wet RGB/NIR/NDRE, NDRE anomaly, slope, TPI.
+
+2. **Extract candidate labels**
+   - Source: Amazon Geoglyphs KML linework.
+   - Output: a Fazenda Colorada GeoJSON with point and line features near the site.
+
+3. **Rasterize labels**
+   - The vector labels were burned into a binary mask aligned exactly to the exported
+     GeoTIFF.
+   - The first mask had 1,134 positive pixels.
+
+4. **Prepare tiles**
+   - The first export was 451 x 492 pixels, so 256-pixel tiles were used.
+   - Nine overlapping image/mask tiles were generated.
+
+5. **Train a smoke model**
+   - A small UNet with a randomly initialized ResNet-18 encoder trained for one CPU epoch.
+   - The model was deliberately weak; it existed to test the plumbing.
+
+6. **Predict and evaluate**
+   - Sliding-window prediction wrote a georeferenced probability GeoTIFF.
+   - A threshold sweep computed IoU, precision, recall, and F1.
+
+Important lesson: a successful smoke run means "the system runs", not "the model works".
+The first IoU was near zero, which is expected from one site, candidate labels, a random
+small model, and one epoch of CPU training.
+
+---
+
+## 19. Data quality lessons from the smoke run
+
+**NaNs in satellite composites**: cloud and scene masks can leave missing pixels in the
+exported GeoTIFF. If those NaNs reach PyTorch, the loss becomes NaN and training fails.
+The loader now replaces NaNs with zero as a defensive measure, but a better next step is
+to clean or flag nodata during preprocessing.
+
+**Candidate labels are not ground truth yet**: KML linework is useful, but it must be
+reviewed. Some features are points, some are duplicate lines, and some are approximate
+outlines. Before trusting model metrics, inspect the raster, vectors, and mask together
+in QGIS.
+
+**Tile size must match export size**: the default 512-pixel tile assumes a larger raster.
+The first Fazenda Colorada export was smaller, so 256-pixel tiles were used. For real
+experiments, either export a larger area or set tile size intentionally.
+
+**Positive-only tiles are misleading**: all nine first-pass tiles contained positive
+label pixels because the AOI was tight around the known site. A useful model needs
+negative/background context too, otherwise it cannot learn what ordinary landscape looks
+like.
+
+**CPU training is only for plumbing**: the Intel Mac mini can verify the loop with a
+small model, but DINOv2 and serious segmentation experiments should wait for a stronger
+machine or a smaller controlled experiment config.
+
+---
+
 ## Appendix: tools in this project
 
 | Tool | Role | Docs |
